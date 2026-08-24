@@ -1,0 +1,9 @@
+{
+  "name": "NIDA Registration",
+  "category": "NIDA",
+  "feeAmount": 5000,
+  "formSchema": [
+    { "key": "full_name", "label": "Full Name", "type": "text" },
+    { "key": "date_of_birth", "label": "Date of Birth", "type": "date" }
+  ]
+}
