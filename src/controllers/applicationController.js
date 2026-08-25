@@ -51,6 +51,37 @@ exports.listApplicationsAdmin = async (req, res) => {
   res.json(applications);
 };
 
+// GET /api/applications/stats/summary  (admin - dashboard totals)
+exports.getDashboardStats = async (req, res) => {
+  try {
+    const statusCounts = await Application.aggregate([
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]);
+
+    const revenueAgg = await Application.aggregate([
+      { $match: { 'payment.status': 'Paid' } },
+      { $lookup: { from: 'services', localField: 'service', foreignField: '_id', as: 'service' } },
+      { $unwind: '$service' },
+      { $group: { _id: null, total: { $sum: '$service.feeAmount' } } },
+    ]);
+
+    const counts = { Submitted: 0, Pending: 0, 'In Progress': 0, Completed: 0 };
+    statusCounts.forEach((s) => {
+      if (counts[s._id] !== undefined) counts[s._id] = s.count;
+    });
+
+    res.json({
+      totalRevenue: revenueAgg[0]?.total || 0,
+      pending: counts['Pending'],
+      inProgress: counts['In Progress'],
+      completed: counts['Completed'],
+      submitted: counts['Submitted'],
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to load dashboard stats', error: err.message });
+  }
+};
+
 // (admin - move it through the pipeline)
 exports.updateStatus = async (req, res) => {
   const { status } = req.body;

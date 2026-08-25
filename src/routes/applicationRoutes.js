@@ -16,10 +16,12 @@ const {
   submitPayment,
   verifyPayment,
   trackByTrackingId,
+   getDashboardStats,
 } = require('../controllers/applicationController');
 
 // Public route (no login needed)
 router.get('/track/:trackingId', trackByTrackingId);
+router.get('/stats/summary', protectAdmin, getDashboardStats);
 
 // Customer routes
 router.post('/', protectCustomer, submitApplication);
