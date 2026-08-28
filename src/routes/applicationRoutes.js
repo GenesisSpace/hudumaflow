@@ -9,6 +9,7 @@ const {
   submitApplication,
   myApplications,
   listApplicationsAdmin,
+  createApplicationAdmin,
   getApplicationByIdAdmin,
   updateStatus,
   decideApplication,
@@ -16,12 +17,11 @@ const {
   submitPayment,
   verifyPayment,
   trackByTrackingId,
-   getDashboardStats,
+  getDashboardStats,
 } = require('../controllers/applicationController');
 
 // Public route (no login needed)
 router.get('/track/:trackingId', trackByTrackingId);
-router.get('/stats/summary', protectAdmin, getDashboardStats);
 
 // Customer routes
 router.post('/', protectCustomer, submitApplication);
@@ -31,6 +31,8 @@ router.patch('/:id/payment', protectCustomer, submitPayment);
 
 // Admin routes
 router.get('/', protectAdmin, listApplicationsAdmin);
+router.post('/admin', protectAdmin, createApplicationAdmin);
+router.get('/stats/summary', protectAdmin, getDashboardStats);
 router.patch('/:id/status', protectAdmin, updateStatus);
 router.patch('/:id/decision', protectAdmin, decideApplication);
 router.patch('/:id/payment/verify', protectAdmin, verifyPayment);

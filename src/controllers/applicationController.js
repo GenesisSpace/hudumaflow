@@ -1,5 +1,6 @@
 const Application = require('../models/Application');
 const Service = require('../models/Service');
+const User = require('../models/User');
 const generateTrackingId = require('../utils/generateTrackingId');
 const supabase = require('../config/supabaseClient');
 
@@ -34,6 +35,73 @@ exports.myApplications = async (req, res) => {
     .populate('service', 'name category feeAmount')
     .sort({ createdAt: -1 });
   res.json(applications);
+};
+
+// GET /api/applications/stats/summary  (admin - dashboard totals)
+exports.getDashboardStats = async (req, res) => {
+  try {
+    const statusCounts = await Application.aggregate([
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]);
+
+    const revenueAgg = await Application.aggregate([
+      { $match: { 'payment.status': 'Paid' } },
+      { $lookup: { from: 'services', localField: 'service', foreignField: '_id', as: 'service' } },
+      { $unwind: '$service' },
+      { $group: { _id: null, total: { $sum: '$service.feeAmount' } } },
+    ]);
+
+    const counts = { Submitted: 0, Pending: 0, 'In Progress': 0, Completed: 0 };
+    statusCounts.forEach((s) => {
+      if (counts[s._id] !== undefined) counts[s._id] = s.count;
+    });
+
+    res.json({
+      totalRevenue: revenueAgg[0]?.total || 0,
+      pending: counts['Pending'],
+      inProgress: counts['In Progress'],
+      completed: counts['Completed'],
+      submitted: counts['Submitted'],
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to load dashboard stats', error: err.message });
+  }
+};
+
+// (admin - create an application on behalf of an already-registered customer)
+exports.createApplicationAdmin = async (req, res) => {
+  try {
+    const { customerPhone, serviceId, formData } = req.body;
+
+    if (!customerPhone || !serviceId) {
+      return res.status(400).json({ message: 'customerPhone and serviceId are required' });
+    }
+
+    const customer = await User.findOne({ phone: customerPhone.trim() });
+    if (!customer) {
+      return res.status(404).json({
+        message: 'Hakuna mteja aliyesajiliwa na namba hiyo ya simu. Mteja lazima ajisajili kwanza kwenye app.',
+      });
+    }
+
+    const service = await Service.findById(serviceId);
+    if (!service || !service.isActive) {
+      return res.status(400).json({ message: 'Service not available' });
+    }
+
+    const trackingId = await generateTrackingId();
+
+    const application = await Application.create({
+      trackingId,
+      customer: customer._id,
+      service: service._id,
+      formData: formData || {},
+    });
+
+    res.status(201).json(application);
+  } catch (err) {
+    res.status(400).json({ message: 'Failed to create application', error: err.message });
+  }
 };
 
 // (admin - list all, with optional filters)

@@ -45,3 +45,14 @@ exports.disableService = async (req, res) => {
   if (!service) return res.status(404).json({ message: 'Service not found' });
   res.json(service);
 };
+
+// PATCH /api/services/:id/enable (admin - re-enable a disabled service)
+exports.enableService = async (req, res) => {
+  const service = await Service.findByIdAndUpdate(
+    req.params.id,
+    { isActive: true },
+    { new: true }
+  );
+  if (!service) return res.status(404).json({ message: 'Service not found' });
+  res.json(service);
+};

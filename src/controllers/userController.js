@@ -1,4 +1,5 @@
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const generateOtp = require('../utils/generateOtp');
 const sendEmail = require('../utils/sendEmail');
@@ -79,9 +80,78 @@ exports.verifyOtp = async (req, res) => {
   }
 };
 
-const jwt = require('jsonwebtoken');
+// GET /api/customer/admin/list  (admin - list all registered customers)
+exports.listCustomersAdmin = async (req, res) => {
+  try {
+    const { search } = req.query;
+    const filter = {};
+    if (search) {
+      filter.$or = [
+        { fullName: { $regex: search, $options: 'i' } },
+        { phone: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+      ];
+    }
 
-// POST /api/customer/login
+    const customers = await User.find(filter)
+      .select('-passwordHash -otpCode -otpExpiresAt')
+      .sort({ createdAt: -1 });
+
+    const Application = require('../models/Application');
+    const customerIds = customers.map((c) => c._id);
+    const applications = await Application.find({ customer: { $in: customerIds } })
+      .populate('service', 'name')
+      .select('customer service trackingId status');
+
+    const appsByCustomer = {};
+    applications.forEach((app) => {
+      const key = app.customer.toString();
+      if (!appsByCustomer[key]) appsByCustomer[key] = [];
+      appsByCustomer[key].push({
+        trackingId: app.trackingId,
+        service: app.service ? app.service.name : '',
+        status: app.status,
+      });
+    });
+
+    const result = customers.map((c) => ({
+      id: c._id,
+      fullName: c.fullName,
+      email: c.email,
+      phone: c.phone,
+      isVerified: c.isVerified,
+      isActive: c.isActive,
+      createdAt: c.createdAt,
+      applications: appsByCustomer[c._id.toString()] || [],
+    }));
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch customers', error: err.message });
+  }
+};
+
+// PATCH /api/customer/admin/:id/disable
+exports.disableCustomer = async (req, res) => {
+  const customer = await User.findByIdAndUpdate(
+    req.params.id,
+    { isActive: false },
+    { new: true }
+  ).select('-passwordHash -otpCode -otpExpiresAt');
+  if (!customer) return res.status(404).json({ message: 'Customer not found' });
+  res.json(customer);
+};
+
+// PATCH /api/customer/admin/:id/enable
+exports.enableCustomer = async (req, res) => {
+  const customer = await User.findByIdAndUpdate(
+    req.params.id,
+    { isActive: true },
+    { new: true }
+  ).select('-passwordHash -otpCode -otpExpiresAt');
+  if (!customer) return res.status(404).json({ message: 'Customer not found' });
+  res.json(customer);
+};
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -117,80 +187,4 @@ exports.login = async (req, res) => {
   } catch (err) {
     res.status(500).json({ message: 'Login failed', error: err.message });
   }
-};
-
-// GET /api/customer/admin/list  (admin - list all registered customers)
-exports.listCustomersAdmin = async (req, res) => {
-  try {
-    const { search } = req.query;
-    const filter = {};
-    if (search) {
-      filter.$or = [
-        { fullName: { $regex: search, $options: 'i' } },
-        { phone: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-      ];
-    }
-
-    const customers = await User.find(filter)
-      .select('-passwordHash -otpCode -otpExpiresAt')
-      .sort({ createdAt: -1 });
-
-    // Attach each customer's applications so the admin can see what service(s) they've used
-    const Application = require('../models/Application');
-    const customerIds = customers.map((c) => c._id);
-    const applications = await Application.find({ customer: { $in: customerIds } })
-      .populate('service', 'name')
-      .select('customer service trackingId status');
-
-    const appsByCustomer = {};
-    applications.forEach((app) => {
-      const key = app.customer.toString();
-      if (!appsByCustomer[key]) appsByCustomer[key] = [];
-      appsByCustomer[key].push({
-        trackingId: app.trackingId,
-        service: app.service ? app.service.name : '',
-        status: app.status,
-      });
-    });
-
-    const result = customers.map((c) => ({
-      id: c._id,
-      fullName: c.fullName,
-      email: c.email,
-      phone: c.phone,
-      isVerified: c.isVerified,
-      isActive: c.isActive,
-      createdAt: c.createdAt,
-      applications: appsByCustomer[c._id.toString()] || [],
-    }));
-
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ message: 'Failed to fetch customers', error: err.message });
-  }
-};
-
-// PATCH /api/customer/admin/:id/disable  (admin - disable a customer's account)
-exports.disableCustomer = async (req, res) => {
-  const customer = await User.findByIdAndUpdate(
-    req.params.id,
-    { isActive: false },
-    { new: true }
-  ).select('-passwordHash -otpCode -otpExpiresAt');
-
-  if (!customer) return res.status(404).json({ message: 'Customer not found' });
-  res.json(customer);
-};
-
-// PATCH /api/customer/admin/:id/enable  (admin - re-enable a customer's account)
-exports.enableCustomer = async (req, res) => {
-  const customer = await User.findByIdAndUpdate(
-    req.params.id,
-    { isActive: true },
-    { new: true }
-  ).select('-passwordHash -otpCode -otpExpiresAt');
-
-  if (!customer) return res.status(404).json({ message: 'Customer not found' });
-  res.json(customer);
 };
