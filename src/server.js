@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const cors = require('cors');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const serviceRoutes = require('./routes/serviceRoutes');
@@ -11,6 +12,26 @@ const adminRoutes = require('./routes/adminRoutes');
 const app = express();
 
 connectDB();
+
+// Origins allowed to call this API from a browser.
+// Add your Vercel production/preview URL here once the customer portal is deployed.
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  process.env.CUSTOMER_PORTAL_URL, // e.g. https://hudumaflow.vercel.app
+].filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, Postman) and any allowed browser origin.
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+}));
 
 app.use(express.json({ limit: '5mb' }));          
 app.use('/api/auth', authRoutes);

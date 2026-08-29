@@ -14,6 +14,7 @@ const {
   updateStatus,
   decideApplication,
   uploadDocument,
+  uploadDocumentAdmin,
   submitPayment,
   verifyPayment,
   trackByTrackingId,
@@ -33,6 +34,7 @@ router.patch('/:id/payment', protectCustomer, submitPayment);
 router.get('/', protectAdmin, listApplicationsAdmin);
 router.post('/admin', protectAdmin, createApplicationAdmin);
 router.get('/stats/summary', protectAdmin, getDashboardStats);
+router.post('/:id/documents/admin', protectAdmin, upload.single('file'), uploadDocumentAdmin);
 router.patch('/:id/status', protectAdmin, updateStatus);
 router.patch('/:id/decision', protectAdmin, decideApplication);
 router.patch('/:id/payment/verify', protectAdmin, verifyPayment);

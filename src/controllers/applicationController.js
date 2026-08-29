@@ -208,6 +208,47 @@ exports.uploadDocument = async (req, res) => {
   }
 };
 
+// (admin uploads a document on behalf of a customer, e.g. from "Ongeza Ombi Jipya")
+exports.uploadDocumentAdmin = async (req, res) => {
+  try {
+    const { label } = req.body;
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    const application = await Application.findById(req.params.id);
+    if (!application) {
+      return res.status(404).json({ message: 'Application not found' });
+    }
+
+    const fileName = `${application.trackingId}/${Date.now()}_${file.originalname}`;
+
+    const { error } = await supabase.storage
+      .from(process.env.SUPABASE_BUCKET)
+      .upload(fileName, file.buffer, { contentType: file.mimetype });
+
+    if (error) {
+      return res.status(500).json({ message: 'Upload failed', error: error.message });
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from(process.env.SUPABASE_BUCKET)
+      .getPublicUrl(fileName);
+
+    application.documents.push({
+      label: label || file.originalname,
+      fileUrl: publicUrlData.publicUrl,
+    });
+    await application.save();
+
+    res.status(201).json(application);
+  } catch (err) {
+    res.status(500).json({ message: 'Upload failed', error: err.message });
+  }
+};
+
 // (customer submits payment info after paying manually)
 exports.submitPayment = async (req, res) => {
   try {
