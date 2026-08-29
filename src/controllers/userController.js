@@ -32,10 +32,15 @@ exports.register = async (req, res) => {
       otpExpiresAt,
     });
 
-    await sendEmail({
+    // Don't block the response on the email send — a slow/stalled SMTP
+    // connection would otherwise hang this whole request. The account is
+    // already created either way; log failures instead of failing registration.
+    sendEmail({
       to: email,
       subject: 'Your HudumaFlow verification code',
       text: `Your OTP code is ${otpCode}. It expires in 10 minutes.`,
+    }).catch((err) => {
+      console.error(`Failed to send OTP email to ${email}:`, err.message);
     });
 
     res.status(201).json({
@@ -77,6 +82,45 @@ exports.verifyOtp = async (req, res) => {
     res.json({ message: 'Account verified successfully. You can now log in.' });
   } catch (err) {
     res.status(500).json({ message: 'Verification failed', error: err.message });
+  }
+};
+
+// POST /api/customer/resend-otp
+exports.resendOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: 'Akaunti haikupatikana' });
+    }
+    if (user.isVerified) {
+      return res.status(400).json({ message: 'Akaunti hii tayari imethibitishwa' });
+    }
+
+    const otpCode = generateOtp();
+    user.otpCode = otpCode;
+    user.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    await user.save();
+
+    // Unlike register(), this IS awaited: it's a manual "resend" click, so the
+    // customer is actively waiting to know whether it actually went out.
+    try {
+      await sendEmail({
+        to: email,
+        subject: 'Your HudumaFlow verification code',
+        text: `Your OTP code is ${otpCode}. It expires in 10 minutes.`,
+      });
+      res.json({ message: 'Msimbo mpya umetumwa kwenye barua pepe yako.' });
+    } catch (err) {
+      console.error(`Failed to resend OTP email to ${email}:`, err.message);
+      res.status(502).json({ message: 'Imeshindwa kutuma barua pepe. Jaribu tena baadaye.' });
+    }
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to resend OTP', error: err.message });
   }
 };
 

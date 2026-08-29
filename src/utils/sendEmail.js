@@ -9,6 +9,11 @@ const transporter = nodemailer.createTransport({
   tls: {
     rejectUnauthorized: false,
   },
+  
+  // which was blocking the whole /register request from ever responding.
+  connectionTimeout: 10000, // 10s to establish the connection
+  greetingTimeout: 10000,   // 10s to receive the SMTP greeting
+  socketTimeout: 15000,     // 15s of inactivity on the socket
 });
 
 const sendEmail = async ({ to, subject, text }) => {
