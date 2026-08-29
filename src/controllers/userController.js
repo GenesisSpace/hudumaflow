@@ -16,7 +16,34 @@ exports.register = async (req, res) => {
 
     const existing = await User.findOne({ email });
     if (existing) {
-      return res.status(409).json({ message: 'Email already registered' });
+      if (existing.isVerified) {
+        return res.status(409).json({ message: 'Email already registered' });
+      }
+
+      // An unverified account already exists for this email — most likely
+      // because the OTP email failed to arrive the first time. Rather than
+      // dead-ending the customer with "already registered", update their
+      // details and send a fresh OTP so they can still complete signup.
+      const otpCode = generateOtp();
+      existing.fullName = fullName;
+      existing.phone = phone;
+      existing.passwordHash = await bcrypt.hash(password, 10);
+      existing.otpCode = otpCode;
+      existing.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+      await existing.save();
+
+      sendEmail({
+        to: email,
+        subject: 'Your HudumaFlow verification code',
+        text: `Your OTP code is ${otpCode}. It expires in 10 minutes.`,
+      }).catch((err) => {
+        console.error(`Failed to send OTP email to ${email}:`, err.message);
+      });
+
+      return res.status(200).json({
+        message: 'Akaunti hii ilishasajiliwa lakini haijathibitishwa. Tumetuma msimbo mpya.',
+        userId: existing._id,
+      });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
