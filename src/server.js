@@ -14,11 +14,21 @@ const adminRoutes = require('./routes/adminRoutes');
 // ENTIRE Node process — not just that one request — taking down every route
 // until Render restarts it. This was causing widespread, intermittent
 // "connection reset" failures across completely unrelated endpoints.
+// unhandledRejection is safe to just log — it's almost always one bad async
+// call (e.g. a DB query), not process-level corruption.
 process.on('unhandledRejection', (reason) => {
   console.error('UNHANDLED REJECTION:', reason);
 });
+
+// uncaughtException is different: per Node's own docs, the process is in an
+// undefined state afterward, and continuing to run it can hang or corrupt
+// things silently instead of crashing cleanly. So we log it AND exit —
+// Render's process supervisor immediately restarts us fresh, the same
+// self-healing behavior that was happening by default before, just without
+// taking every other in-flight request down with an unlogged crash.
 process.on('uncaughtException', (err) => {
-  console.error('UNCAUGHT EXCEPTION:', err);
+  console.error('UNCAUGHT EXCEPTION — restarting process:', err);
+  process.exit(1);
 });
 
 const app = express();
