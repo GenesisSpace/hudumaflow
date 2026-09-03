@@ -204,24 +204,32 @@ exports.listCustomersAdmin = async (req, res) => {
 
 // PATCH /api/customer/admin/:id/disable
 exports.disableCustomer = async (req, res) => {
-  const customer = await User.findByIdAndUpdate(
-    req.params.id,
-    { isActive: false },
-    { new: true }
-  ).select('-passwordHash -otpCode -otpExpiresAt');
-  if (!customer) return res.status(404).json({ message: 'Customer not found' });
-  res.json(customer);
+  try {
+    const customer = await User.findByIdAndUpdate(
+      req.params.id,
+      { isActive: false },
+      { new: true }
+    ).select('-passwordHash -otpCode -otpExpiresAt');
+    if (!customer) return res.status(404).json({ message: 'Customer not found' });
+    res.json(customer);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to disable customer', error: err.message });
+  }
 };
 
 // PATCH /api/customer/admin/:id/enable
 exports.enableCustomer = async (req, res) => {
-  const customer = await User.findByIdAndUpdate(
-    req.params.id,
-    { isActive: true },
-    { new: true }
-  ).select('-passwordHash -otpCode -otpExpiresAt');
-  if (!customer) return res.status(404).json({ message: 'Customer not found' });
-  res.json(customer);
+  try {
+    const customer = await User.findByIdAndUpdate(
+      req.params.id,
+      { isActive: true },
+      { new: true }
+    ).select('-passwordHash -otpCode -otpExpiresAt');
+    if (!customer) return res.status(404).json({ message: 'Customer not found' });
+    res.json(customer);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to enable customer', error: err.message });
+  }
 };
 exports.login = async (req, res) => {
   try {

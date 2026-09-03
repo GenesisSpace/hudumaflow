@@ -3,8 +3,12 @@ const Admin = require('../models/Admin');
 
 // GET /api/admins (list all admins)
 exports.listAdmins = async (req, res) => {
-  const admins = await Admin.find().select('-passwordHash').sort({ createdAt: -1 });
-  res.json(admins);
+  try {
+    const admins = await Admin.find().select('-passwordHash').sort({ createdAt: -1 });
+    res.json(admins);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch admins', error: err.message });
+  }
 };
 
 // POST /api/admins (create a new admin)
@@ -39,24 +43,32 @@ exports.createAdmin = async (req, res) => {
 
 // PATCH /api/admins/:id/disable (disable an admin's access)
 exports.disableAdmin = async (req, res) => {
-  const admin = await Admin.findByIdAndUpdate(
-    req.params.id,
-    { isActive: false },
-    { new: true }
-  ).select('-passwordHash');
+  try {
+    const admin = await Admin.findByIdAndUpdate(
+      req.params.id,
+      { isActive: false },
+      { new: true }
+    ).select('-passwordHash');
 
-  if (!admin) return res.status(404).json({ message: 'Admin not found' });
-  res.json(admin);
+    if (!admin) return res.status(404).json({ message: 'Admin not found' });
+    res.json(admin);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to disable admin', error: err.message });
+  }
 };
 
 // PATCH /api/admins/:id/enable (re-enable an admin's access)
 exports.enableAdmin = async (req, res) => {
-  const admin = await Admin.findByIdAndUpdate(
-    req.params.id,
-    { isActive: true },
-    { new: true }
-  ).select('-passwordHash');
+  try {
+    const admin = await Admin.findByIdAndUpdate(
+      req.params.id,
+      { isActive: true },
+      { new: true }
+    ).select('-passwordHash');
 
-  if (!admin) return res.status(404).json({ message: 'Admin not found' });
-  res.json(admin);
+    if (!admin) return res.status(404).json({ message: 'Admin not found' });
+    res.json(admin);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to enable admin', error: err.message });
+  }
 };

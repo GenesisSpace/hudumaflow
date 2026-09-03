@@ -9,6 +9,18 @@ const applicationRoutes = require('./routes/applicationRoutes');
 const paymentMethodRoutes = require('./routes/paymentMethodRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 
+// Without these, any unguarded async error anywhere in the app (a missing
+// try/catch around a DB call, a transient MongoDB hiccup, etc.) crashes the
+// ENTIRE Node process — not just that one request — taking down every route
+// until Render restarts it. This was causing widespread, intermittent
+// "connection reset" failures across completely unrelated endpoints.
+process.on('unhandledRejection', (reason) => {
+  console.error('UNHANDLED REJECTION:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION:', err);
+});
+
 const app = express();
 
 connectDB();

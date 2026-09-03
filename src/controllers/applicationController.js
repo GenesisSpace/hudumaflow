@@ -31,10 +31,14 @@ exports.submitApplication = async (req, res) => {
 
 // (customer's own applications)
 exports.myApplications = async (req, res) => {
-  const applications = await Application.find({ customer: req.userId })
-    .populate('service', 'name category feeAmount')
-    .sort({ createdAt: -1 });
-  res.json(applications);
+  try {
+    const applications = await Application.find({ customer: req.userId })
+      .populate('service', 'name category feeAmount')
+      .sort({ createdAt: -1 });
+    res.json(applications);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch applications', error: err.message });
+  }
 };
 
 // GET /api/applications/stats/summary  (admin - dashboard totals)
@@ -106,60 +110,72 @@ exports.createApplicationAdmin = async (req, res) => {
 
 // (admin - list all, with optional filters)
 exports.listApplicationsAdmin = async (req, res) => {
-  const { status, serviceId } = req.query;
-  const filter = {};
-  if (status) filter.status = status;
-  if (serviceId) filter.service = serviceId;
+  try {
+    const { status, serviceId } = req.query;
+    const filter = {};
+    if (status) filter.status = status;
+    if (serviceId) filter.service = serviceId;
 
-  const applications = await Application.find(filter)
-    .populate('customer', 'fullName email phone')
-    .populate('service', 'name category feeAmount')
-    .sort({ createdAt: -1 });
+    const applications = await Application.find(filter)
+      .populate('customer', 'fullName email phone')
+      .populate('service', 'name category feeAmount')
+      .sort({ createdAt: -1 });
 
-  res.json(applications);
+    res.json(applications);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch applications', error: err.message });
+  }
 };
 
 // (admin - move it through the pipeline)
 exports.updateStatus = async (req, res) => {
-  const { status } = req.body;
+  try {
+    const { status } = req.body;
 
-  const application = await Application.findByIdAndUpdate(
-    req.params.id,
-    { status },
-    { new: true, runValidators: true }
-  );
+    const application = await Application.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true, runValidators: true }
+    );
 
-  if (!application) {
-    return res.status(404).json({ message: 'Application not found' });
+    if (!application) {
+      return res.status(404).json({ message: 'Application not found' });
+    }
+
+    res.json(application);
+  } catch (err) {
+    res.status(400).json({ message: 'Failed to update status', error: err.message });
   }
-
-  res.json(application);
 };
 
 // (admin - approve or reject; auto-advances status)
 exports.decideApplication = async (req, res) => {
-  const { decision, comment } = req.body;
+  try {
+    const { decision, comment } = req.body;
 
-  const application = await Application.findById(req.params.id);
-  if (!application) {
-    return res.status(404).json({ message: 'Application not found' });
+    const application = await Application.findById(req.params.id);
+    if (!application) {
+      return res.status(404).json({ message: 'Application not found' });
+    }
+
+    application.decision = decision;
+
+    // Auto-advance the status based on the decision
+    if (decision === 'Approved') {
+      application.status = 'In Progress';
+    } else if (decision === 'Rejected') {
+      application.status = 'Completed';
+    }
+
+    if (comment) {
+      application.adminComments.push({ comment });
+    }
+    await application.save();
+
+    res.json(application);
+  } catch (err) {
+    res.status(400).json({ message: 'Failed to record decision', error: err.message });
   }
-
-   application.decision = decision;
-
-  // Auto-advance the status based on the decision
-  if (decision === 'Approved') {
-    application.status = 'In Progress';
-  } else if (decision === 'Rejected') {
-    application.status = 'Completed';
-  }
-
-  if (comment) {
-    application.adminComments.push({ comment });
-  }
-  await application.save();
-
-  res.json(application);
 };
 
 // (customer uploads a document)
@@ -294,26 +310,34 @@ exports.verifyPayment = async (req, res) => {
 
 // (public - no login required)
 exports.trackByTrackingId = async (req, res) => {
-  const application = await Application.findOne({ trackingId: req.params.trackingId })
-    .populate('service', 'name category')
-    .select('-adminComments'); // hide internal admin notes from public view
+  try {
+    const application = await Application.findOne({ trackingId: req.params.trackingId })
+      .populate('service', 'name category')
+      .select('-adminComments'); // hide internal admin notes from public view
 
-  if (!application) {
-    return res.status(404).json({ message: 'Application not found' });
+    if (!application) {
+      return res.status(404).json({ message: 'Application not found' });
+    }
+
+    res.json(application);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch application', error: err.message });
   }
-
-  res.json(application);
 };
 
 // (admin - full detail view)
 exports.getApplicationByIdAdmin = async (req, res) => {
-  const application = await Application.findById(req.params.id)
-    .populate('customer', 'fullName email phone')
-    .populate('service', 'name category feeAmount formSchema');
+  try {
+    const application = await Application.findById(req.params.id)
+      .populate('customer', 'fullName email phone')
+      .populate('service', 'name category feeAmount formSchema');
 
-  if (!application) {
-    return res.status(404).json({ message: 'Application not found' });
+    if (!application) {
+      return res.status(404).json({ message: 'Application not found' });
+    }
+
+    res.json(application);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch application', error: err.message });
   }
-
-  res.json(application);
 };
