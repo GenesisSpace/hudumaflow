@@ -1,9 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const generateOtp = require('../utils/generateOtp');
-const sendEmail = require('../utils/sendEmail');
-
 
 // POST /api/customer/register
 exports.register = async (req, res) => {
@@ -16,138 +13,24 @@ exports.register = async (req, res) => {
 
     const existing = await User.findOne({ email });
     if (existing) {
-      if (existing.isVerified) {
-        return res.status(409).json({ message: 'Email already registered' });
-      }
-
-      // An unverified account already exists for this email — most likely
-      // because the OTP email failed to arrive the first time. Rather than
-      // dead-ending the customer with "already registered", update their
-      // details and send a fresh OTP so they can still complete signup.
-      const otpCode = generateOtp();
-      existing.fullName = fullName;
-      existing.phone = phone;
-      existing.passwordHash = await bcrypt.hash(password, 10);
-      existing.otpCode = otpCode;
-      existing.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
-      await existing.save();
-
-      sendEmail({
-        to: email,
-        subject: 'Your HudumaFlow verification code',
-        text: `Your OTP code is ${otpCode}. It expires in 10 minutes.`,
-      }).catch((err) => {
-        console.error(`Failed to send OTP email to ${email}:`, err.message);
-      });
-
-      return res.status(200).json({
-        message: 'Akaunti hii ilishasajiliwa lakini haijathibitishwa. Tumetuma msimbo mpya.',
-        userId: existing._id,
-      });
+      return res.status(409).json({ message: 'Email already registered' });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const otpCode = generateOtp();
-    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
 
     const user = await User.create({
       fullName,
       email,
       phone,
       passwordHash,
-      otpCode,
-      otpExpiresAt,
-    });
-
-    // Don't block the response on the email send — a slow/stalled SMTP
-    // connection would otherwise hang this whole request. The account is
-    // already created either way; log failures instead of failing registration.
-    sendEmail({
-      to: email,
-      subject: 'Your HudumaFlow verification code',
-      text: `Your OTP code is ${otpCode}. It expires in 10 minutes.`,
-    }).catch((err) => {
-      console.error(`Failed to send OTP email to ${email}:`, err.message);
     });
 
     res.status(201).json({
-      message: 'Registered successfully. Check your email for the OTP code.',
+      message: 'Registered successfully. You can now log in.',
       userId: user._id,
     });
   } catch (err) {
     res.status(500).json({ message: 'Registration failed', error: err.message });
-  }
-};
-
-// POST /api/customer/verify-otp
-exports.verifyOtp = async (req, res) => {
-  try {
-    const { userId, otpCode } = req.body;
-
-    const user = await User.findById(userId).select('+otpCode +otpExpiresAt');
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    if (user.isVerified) {
-      return res.status(400).json({ message: 'User already verified' });
-    }
-
-    if (user.otpCode !== otpCode) {
-      return res.status(400).json({ message: 'Invalid OTP' });
-    }
-
-    if (user.otpExpiresAt < new Date()) {
-      return res.status(400).json({ message: 'OTP expired, please request a new one' });
-    }
-
-    user.isVerified = true;
-    user.otpCode = undefined;
-    user.otpExpiresAt = undefined;
-    await user.save();
-
-    res.json({ message: 'Account verified successfully. You can now log in.' });
-  } catch (err) {
-    res.status(500).json({ message: 'Verification failed', error: err.message });
-  }
-};
-
-// POST /api/customer/resend-otp
-exports.resendOtp = async (req, res) => {
-  try {
-    const { email } = req.body;
-    if (!email) {
-      return res.status(400).json({ message: 'Email is required' });
-    }
-
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ message: 'Akaunti haikupatikana' });
-    }
-    if (user.isVerified) {
-      return res.status(400).json({ message: 'Akaunti hii tayari imethibitishwa' });
-    }
-
-    const otpCode = generateOtp();
-    user.otpCode = otpCode;
-    user.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
-    await user.save();
-
-    // Unlike register(), this IS awaited: it's a manual "resend" click, so the
-    // customer is actively waiting to know whether it actually went out.
-    try {
-      await sendEmail({
-        to: email,
-        subject: 'Your HudumaFlow verification code',
-        text: `Your OTP code is ${otpCode}. It expires in 10 minutes.`,
-      });
-      res.json({ message: 'Msimbo mpya umetumwa kwenye barua pepe yako.' });
-    } catch (err) {
-      console.error(`Failed to resend OTP email to ${email}:`, err.message);
-      res.status(502).json({ message: 'Imeshindwa kutuma barua pepe. Jaribu tena baadaye.' });
-    }
-  } catch (err) {
-    res.status(500).json({ message: 'Failed to resend OTP', error: err.message });
   }
 };
 
@@ -165,7 +48,7 @@ exports.listCustomersAdmin = async (req, res) => {
     }
 
     const customers = await User.find(filter)
-      .select('-passwordHash -otpCode -otpExpiresAt')
+      .select('-passwordHash')
       .sort({ createdAt: -1 });
 
     const Application = require('../models/Application');
@@ -190,7 +73,6 @@ exports.listCustomersAdmin = async (req, res) => {
       fullName: c.fullName,
       email: c.email,
       phone: c.phone,
-      isVerified: c.isVerified,
       isActive: c.isActive,
       createdAt: c.createdAt,
       applications: appsByCustomer[c._id.toString()] || [],
@@ -209,7 +91,7 @@ exports.disableCustomer = async (req, res) => {
       req.params.id,
       { isActive: false },
       { new: true }
-    ).select('-passwordHash -otpCode -otpExpiresAt');
+    ).select('-passwordHash');
     if (!customer) return res.status(404).json({ message: 'Customer not found' });
     res.json(customer);
   } catch (err) {
@@ -224,13 +106,15 @@ exports.enableCustomer = async (req, res) => {
       req.params.id,
       { isActive: true },
       { new: true }
-    ).select('-passwordHash -otpCode -otpExpiresAt');
+    ).select('-passwordHash');
     if (!customer) return res.status(404).json({ message: 'Customer not found' });
     res.json(customer);
   } catch (err) {
     res.status(500).json({ message: 'Failed to enable customer', error: err.message });
   }
 };
+
+// POST /api/customer/login
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -243,10 +127,6 @@ exports.login = async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
       return res.status(401).json({ message: 'Invalid credentials' });
-    }
-
-    if (!user.isVerified) {
-      return res.status(403).json({ message: 'Please verify your account before logging in' });
     }
 
     if (!user.isActive) {
